@@ -118,7 +118,9 @@ int32_t nd_div2k_9(uint32_t* nd, int32_t ndlo, int32_t ndhi, uint32_t k) {
         //          = 249_999_999 + 750_000_000 = 999_999_999
         // k = 3, (val_max >> 3) + carry_max 
         //          = 124_999_999 + 875_000_000 = 999_999_999
-
+        // ... ... ... ... ... ... ... ... ... ... ... ... ...
+        // k = 9, (val_max >> 9) + carry_max 
+        //          = 1_953_124 + 998_046_875 = 999_999_999
         if (i == (ndlo & 127)) break;
         i = (i - 1) & 127;
     }
@@ -181,6 +183,9 @@ int32_t nd_mul2(uint32_t* nd, int32_t ndhi) {
     for (uint32_t i = 0; i <= (uint32_t)ndhi; i++) {
         uint32_t val = (nd[i] << 1) | carry_in;
         carry_in = val / 1000000000;
+        // val = k * 10^9 + r (0 =< r < 10^9)
+        // carry_in = k
+        // nd[i] = val - carry_in * 10^9 = r
         nd[i] = val - carry_in * 1000000000;
     }
 
@@ -196,6 +201,9 @@ int32_t nd_mul2k_29(uint32_t* nd, int32_t ndhi, uint32_t k) {
     for (uint32_t i = 0; i <= (uint32_t)ndhi; i++) {
         uint64_t val = ((uint64_t)nd[i] << k) | carry_in;
         carry_in = (uint32_t)(val / 1000000000);
+        // val = k * 10^9 + r (0 =< r < 10^9)
+        // carry_in = k
+        // nd[i] = val - carry_in * 10^9 = r
         nd[i] = (uint32_t)(val - carry_in * 1000000000);
     }
 
@@ -206,12 +214,12 @@ int32_t nd_mul2k_29(uint32_t* nd, int32_t ndhi, uint32_t k) {
 
 // This time the constraint on k comes from wanting val to be no more
 // than (10^9)^2 = 10^18, which limits k to 29. 
-// carry_in_max < (10^9)^2 / 10^9 = 10^9 < 4,294,967,295 (max of uint32_t)
+// carry_in_max = 10^9 - 1
 // if k = 29
 // val = (10^9 - 1) * 2^29 + carry_in_max
-//     < 10^9 * 2^29 - 2^29 + 10^9
-//     = 10^9 * 536_870_912 + 463_129_088
-//     = 536_870_912_463_129_088 < 10^18
+//     = 10^9 * 2^29 - 2^29 + 10^9 - 1
+//     = 10^9 * 536_870_912 + 463,129,087
+//     = 536_870_912_463_129_087 < 10^18
 // if k = 30
 // val = (10^9 - 1) * 2^30 + carry_in_max
 //     = 10^9 * 2^30 - 2^30 + 10^9 - 1
@@ -284,7 +292,7 @@ void print(double n) {
         else {
             nd[0] |= 0x100000;
         }
-        // max of nd[0] is 0x111111 = 2_097_151 < 10^9
+        // max of nd[0] is 0x111111 = 2_097_151 < 10^9 ????
 
         e -= 1043;
         // if (t.u32.lo == 0)
@@ -292,8 +300,10 @@ void print(double n) {
         //       = m * 2^32 * 2^(e - 1075) = m * 2^(e - 1043)
         // else 
         //     n = (m * 2^32 + t.u32.lo) * 2^(e - 1075)
+        //       = (m * 2^3 + t.u32.lo / 2^29) * 2^29 * 2^(e - 1075) ????
         if (t.u32.lo) {
             e -= 32;
+            // max of nd[0] is 0x111111000 +  = 2_097_151 < 10^9 ????
             nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
             ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff);
         }
