@@ -62,6 +62,8 @@ void nd_print(char* p, uint32_t* nd, int32_t ndlo, int32_t ndhi) {
     *p = 0;
 }
 
+// ================================== divide ==================================
+// 
 // Multiplying by 2e takes a bit of effort. Let's start by considering the case
 // where e is negative, at which point we're really dividing by 2^-e. In turn, 
 // this is dividing by 2 for -e times. Just dividing by 2 first:
@@ -106,7 +108,7 @@ int32_t nd_div2k_9(uint32_t* nd, int32_t ndlo, int32_t ndhi, uint32_t k) {
         //   = (val >> k) * (10^9)^i + (val & mask) * ((10^9) >> k) * (10^9)^(i-1)
         nd[i] = (val >> k) + carry;
         carry = (val & mask) * mul;
-        // carry_max 
+        // carry_max
         //   = mask * mul 
         //   = (2^k - 1) * (10^9 / 2^k) 
         //   = 10^9 - 10^9 / 2^k < 10^9
@@ -171,6 +173,28 @@ int32_t nd_div2k(uint32_t* nd, int32_t ndlo, int32_t ndhi, uint32_t k) {
     return ndlo;
 }
 
+// ================================= multiply =================================
+// a = 10^9,
+// 0 =< Pi < a
+// 0 =< Ci < a
+// 0 =< Cf < a  
+// 0 =< Ri < a
+// 0 <= k < 29  ==>  Ci + P(i+1) * 2^k < 10^18
+//              ==>  Cf + P0 * 2^k < 10^18  
+//
+// f = p0 + P1 * a + P2 * a^2 + ... + Pnh * a^nh
+// f * 2^k + Cf
+//   = (p0 + P1 * a + P2 * a^2 + ... + Pnh * a^nh) * 2^k + Cf
+//   = Cf + p0 * 2^k + (P1 * a + P2 * a^2 ... + Pnh * a^nh) * 2^k
+//   = (C0 * a + R0) + (P1 * a + P2 * a^2 ... + Pnh * a^nh) * 2^k
+//   = R0 + (C0 + P1 * 2^k) * a + (P2 * a^2 ... + Pnh * a^nh) * 2^k
+//   = R0 + (C1 * a + R1) * a + (P2 * a^2 ... + Pnh * a^nh) * 2^k
+//   = R0 + R1 * a + (C1 + P2 * 2^k) * a^2 + (... + Pnh * a^nh) * 2^k
+//   = R0 + R1 * a + (C2 * a + R2) * a^2 + (... + Pnh * a^nh) * 2^k
+//   = R0 + R1 * a + R2 * a^2 + C2 * a^3 + (... + Pnh * a^nh) * 2^k
+//   = ...... ...... ...... ...... ...... ...... ...... ...... ...... ......
+//   = R0 + R1 * a + R2 * a^2 + R3 * a^3 + ... + Rnh * a^nh + Cnh * a^(nh+1)
+
 // We can then go through the same process for multiplying, starting with 
 // multiplication by 2:
 // carry_in_max = val / 10^9 
@@ -214,11 +238,11 @@ int32_t nd_mul2k_29(uint32_t* nd, int32_t ndhi, uint32_t k) {
 
 // This time the constraint on k comes from wanting val to be no more
 // than (10^9)^2 = 10^18, which limits k to 29. 
-// carry_in_max = 10^9 - 1
+// carry_in_max = 10^9 - 1 < 10^9
 // if k = 29
 // val = (10^9 - 1) * 2^29 + carry_in_max
 //     = 10^9 * 2^29 - 2^29 + 10^9 - 1
-//     = 10^9 * 536_870_912 + 463,129,087
+//     = 10^9 * 536_870_912 + 463_129_087
 //     = 536_870_912_463_129_087 < 10^18
 // if k = 30
 // val = (10^9 - 1) * 2^30 + carry_in_max
@@ -267,14 +291,14 @@ int32_t nd_mul2k(uint32_t* nd, int32_t ndhi, uint32_t k, uint32_t carry_in) {
 void print(double n) {
     TValue t;
     t.n = n;
-    if ((t.u32.hi << 1) >= 0xffe00000) {
+    if ((t.u32.hi << 1) >= 0xffe00000) { // the exponent field is all ones
         // binary form: 
         // t.u32.hi = Bx-111-1111-1111-xxxx-xxxx-xxxx-xxxx-xxxx
         // t.u32.hi << 1 = B1111-1111-111x-xxxx-xxxx-xxxx-xxxx-xxxx
-        if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) {
+        if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) { // mantissa is not 0
             printf("NaN\n");
         }
-        else {
+        else { // mantissa is 0
             printf("Infinity\n");
         }
     }
@@ -290,9 +314,11 @@ void print(double n) {
             e++;
         }
         else {
+            // IEEE 754 numbers have hence effectively a 53 bit significand 
+            // where the first 1 bit is hidden (with value hidden = 252)
             nd[0] |= 0x100000;
         }
-        // max of nd[0] is 0x111111 = 2_097_151 < 10^9 ????
+        // max of nd[0] is 0x1fffff = 2_097_151 < 10^9
 
         e -= 1043;
         // if (t.u32.lo == 0)
@@ -300,10 +326,12 @@ void print(double n) {
         //       = m * 2^32 * 2^(e - 1075) = m * 2^(e - 1043)
         // else 
         //     n = (m * 2^32 + t.u32.lo) * 2^(e - 1075)
-        //       = (m * 2^3 + t.u32.lo / 2^29) * 2^29 * 2^(e - 1075) ????
+        //       = (m * 2^32 + t.u32.lo - t.u32.lo & 0x1fffffff + t.u32.lo & 0x1fffffff) * 2^(e - 1075)
+        //       = ((m << 3 + t.u32.lo >> 29) * 2^29 + t.u32.lo & 0x1fffffff) * 2^(e - 1075)
         if (t.u32.lo) {
             e -= 32;
-            // max of nd[0] is 0x111111000 +  = 2_097_151 < 10^9 ????
+            // max of nd[0] is (0x1fffff << 3) | 0x7 = 16_777_215 < 10^9
+            // max of Cf = 0x1fffffff = 536_870_911 < 10^9
             nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
             ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff);
         }
