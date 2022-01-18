@@ -50,6 +50,7 @@ void decode(double n) {
     }
 }
 
+inline
 void nd_print(char* p, uint32_t* nd, int32_t ndlo, int32_t ndhi) {
     int32_t i;
     for (i = ndhi; i >= 0; --i) {
@@ -288,7 +289,7 @@ int32_t nd_mul2k(uint32_t* nd, int32_t ndhi, uint32_t k, uint32_t carry_in) {
 
 // We can plug these routines into the decode function from earlier to create
 // a print function:
-void print(double n) {
+void double_conversion(char* p, double n) {
     TValue t;
     t.n = n;
     if ((t.u32.hi << 1) >= 0xffe00000) { // the exponent field is all ones
@@ -343,7 +344,7 @@ void print(double n) {
             ndlo = nd_div2k(nd, ndlo, ndhi, (uint32_t)-e);
         }
 
-        nd_print(buf, nd, ndlo, ndhi);
-        printf("%s\n", buf);
+        nd_print(p, nd, ndlo, ndhi);
+        // printf("%s\n", buf);
     }
 }
